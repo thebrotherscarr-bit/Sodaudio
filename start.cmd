@@ -13,17 +13,35 @@ if not "%SODAUDIO_PORT%"=="" set "PORT=%SODAUDIO_PORT%"
 set "OPEN=1"
 set "TRAY=0"
 set "UPDATE=1"
+set "UPDATED=0"
 for %%a in (%*) do (
     if /i "%%~a"=="--no-open" set "OPEN=0"
     if /i "%%~a"=="--tray" set "TRAY=1"
     if /i "%%~a"=="--no-update" set "UPDATE=0"
+    if /i "%%~a"=="--updated" set "UPDATED=1"
 )
 set "URL=http://127.0.0.1:%PORT%"
 
 call :up
 if not errorlevel 1 goto running
 
-if "%UPDATE%"=="1" call :update
+rem A git checkout updates itself here. git pull may rewrite this very file, and cmd.exe reads a batch file a line at a
+rem time as it runs it, so the pull and the restart of the (possibly new) start.cmd are one block, read whole before git
+rem touches anything. The restarted script skips the update and runs from the top. A zip copy is left as it is.
+if not "%UPDATE%"=="1" goto updated
+if not exist ".git" goto updated
+where git >nul 2>nul || goto updated
+set "SODAUDIO_BEFORE="
+for /f %%h in ('git rev-parse HEAD 2^>nul') do set "SODAUDIO_BEFORE=%%h"
+(
+    git pull --ff-only -q >nul 2>nul
+    if errorlevel 1 echo Could not update automatically ^(local changes, or no connection^); starting the version you have.
+    call "%~f0" --no-update --updated %*
+    exit /b
+)
+
+:updated
+if "%UPDATED%"=="1" for /f %%h in ('git rev-parse HEAD 2^>nul') do if not "%%h"=="%SODAUDIO_BEFORE%" echo Updated Sodaudio to the latest version.
 
 if exist ".venv\Scripts\python.exe" goto deps
 echo First run: creating the engine's Python 3.12 environment in .venv ...
@@ -77,20 +95,6 @@ exit /b 0
 echo Could not set up Python 3.12 for the engine. Install Python 3.12 (python.org) or uv, then run start.cmd again.
 pause
 exit /b 1
-
-:update
-rem Only in a git checkout with git installed; a zip copy is left as it is.
-if not exist ".git" exit /b 0
-where git >nul 2>nul || exit /b 0
-for /f %%h in ('git rev-parse HEAD 2^>nul') do set "BEFORE=%%h"
-git pull --ff-only -q >nul 2>nul
-if errorlevel 1 (
-    echo Could not update automatically ^(local changes, or no connection^); starting the version you have.
-    exit /b 0
-)
-for /f %%h in ('git rev-parse HEAD 2^>nul') do set "AFTER=%%h"
-if not "%BEFORE%"=="%AFTER%" echo Updated Sodaudio to the latest version.
-exit /b 0
 
 :up
 curl.exe -s -o nul -m 2 "%URL%/api/health"

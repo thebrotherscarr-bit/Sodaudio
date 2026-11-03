@@ -185,4 +185,6 @@ class Services:
     def shutdown(self):
         if self.queue:
             self.queue.stop(wait=False)
-        self.supervisor.shutdown()
+        self.supervisor.shutdown()  # before the lock goes: it stops our ComfyUI only while no one else holds the GPU
+        if self.queue:
+            self.queue.end_gpu_run()  # a run cut short by the quit releases the GPU lock now, not at process exit

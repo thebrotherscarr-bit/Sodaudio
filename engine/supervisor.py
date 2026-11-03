@@ -48,6 +48,11 @@ class Supervisor:
     def managed(self) -> bool:
         return self.process is not None and self.process.poll() is None
 
+    @property
+    def ours(self) -> bool:
+        """A ComfyUI this engine started (itself or with the start script), not one it attached to."""
+        return self.managed or bool(self.script_pid)
+
     # --- watching ------------------------------------------------------------------------------------------------
     def probe(self) -> bool:
         try:
@@ -242,6 +247,25 @@ class Supervisor:
         if told:
             log("ComfyUI is free; continuing")
 
+    def end_run(self, log=None):
+        """The GPU run is over (the queue calls this while it still holds the GPU lock): a ComfyUI this engine started is
+        stopped, so the next lock holder, here or in the other app, starts its own fresh one. An attached ComfyUI
+        (Comfy Desktop, or one someone else started) is never stopped."""
+        if self.ours:
+            (log or self.services.log)("GPU run over: stopping the ComfyUI this engine started")
+            self.stop()
+
     def shutdown(self):
+        """On quit, a ComfyUI this engine started is stopped, unless the other app holds the GPU lock: then it may be
+        running a job on it, so it is left running and handed over (it is no longer ours to restart or stop)."""
         self._stop.set()
+        if not self.ours:
+            self.process, self.script_pid = None, None
+            return
+        lock = getattr(self.services.queue, "gpu_lock", None)
+        holder = lock.holder() if lock is not None else None
+        if holder is not None and not lock.held_by_me():
+            self.services.log(f"leaving ComfyUI running: {holder.get('owner')} holds the GPU and may be using it")
+            self.process, self.script_pid = None, None
+            return
         self.stop()

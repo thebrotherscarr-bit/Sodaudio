@@ -1,6 +1,7 @@
 """The real ComfyUI path against a stand-in ComfyUI (tests/fake_comfy): the supervisor starts it with ComfyUI's
 arguments, the ACE-Step client submits the graph and fetches the take, the supervisor restarts it every N tracks, and
-stopping leaves no process behind. No GPU and no models are touched."""
+the ComfyUI it started is stopped when the GPU run ends, and stopping leaves no process behind. No GPU and no models are
+touched."""
 import socket
 import sys
 from pathlib import Path
@@ -40,10 +41,9 @@ def test_generate_through_comfyui(comfy_services):
     assert "starting ComfyUI" in log and "--disable-dynamic-vram" in log and "--reserve-vram 1.5" in log
     assert "restarting ComfyUI" in log  # restart_every = 2
     assert svc.supervisor.gpu()["name"] == "Fake GPU"
-    process = svc.supervisor.process
-    assert process is not None and process.poll() is None
-    svc.supervisor.stop()
-    assert process.poll() is not None
+    # The GPU run is over: the ComfyUI the engine started was stopped before the GPU lock was released.
+    assert svc.supervisor.process is None and not svc.supervisor.probe()
+    assert any("GPU run over: stopping the ComfyUI this engine started" in line for line in svc.events.recent["engine"])
 
 
 def test_an_external_comfyui_is_never_restarted(comfy_services):
@@ -97,9 +97,8 @@ def test_start_script_like_the_overnight_runs(comfy_services, tmp_path, monkeypa
     wait_idle(svc, 120)
     assert svc.queue.store.get(job)["state"] == "done", svc.queue.store.get(job)["error"]
     assert record.read_text().split() == ["4", "BelowNormal"]
-    pid = svc.supervisor.script_pid
-    assert pid
-    svc.supervisor.stop()
+    # Its own: the engine stopped it when the GPU run ended.
+    assert svc.supervisor.script_pid is None
     from .conftest import wait_for
     wait_for(lambda: not svc.supervisor.probe(), 20)
 

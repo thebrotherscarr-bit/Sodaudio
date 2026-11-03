@@ -3,6 +3,7 @@ import { ChildProcess, execFile, spawn } from "node:child_process";
 import { app } from "electron";
 import * as fs from "node:fs";
 import * as http from "node:http";
+import * as os from "node:os";
 import * as path from "node:path";
 
 export const PORT = Number(process.env.SODAUDIO_PORT || 8770);
@@ -25,6 +26,17 @@ export function request(method: string, route: string, body?: unknown, timeout =
     if (data) req.write(data);
     req.end();
   });
+}
+
+// The GPU lock SodaPixel and Sodaudio share (engine/gpu_lock.py): its content when the process holding it is alive.
+function gpuLockHolder(): { owner?: string; pid?: number } | null {
+  const dir = process.env.SODA_LOCK_DIR || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "Soda");
+  try {
+    const data = JSON.parse(fs.readFileSync(path.join(dir, "gpu.lock"), "utf8"));
+    if (!data || typeof data.pid !== "number") return null;
+    try { process.kill(data.pid, 0); } catch (e: any) { if (e.code !== "EPERM") return null; }  // signal 0 only probes
+    return data;
+  } catch { return null; }
 }
 
 // Where the engine lives: bundled in resources/engine when packaged, or the source checkout in development.
@@ -121,8 +133,8 @@ export class Engine {
     await this.waitHealthy(240000);
   }
 
-  // Ask the engine to exit (finish or stop the current job), then end its whole process tree: no Python, ComfyUI or
-  // MOSS process is left behind.
+  // Ask the engine to exit (finish or stop the current job); it stops the ComfyUI it started, unless the other app
+  // holds the GPU lock (ARCHITECTURE.md). An engine that will not exit in time is ended.
   async stop(mode: "finish" | "stop") {
     this.stopping = true;
     if (this.external || !this.child) return;
@@ -133,8 +145,14 @@ export class Engine {
       const timer = setTimeout(() => resolve(false), mode === "finish" ? 6 * 3600 * 1000 : 30000);
       child.once("exit", () => { clearTimeout(timer); resolve(true); });
     });
-    if (child.pid) await new Promise((r) => execFile("taskkill", ["/T", "/F", "/PID", String(child.pid)], () => r(null)));
-    this.write(exited ? "engine stopped" : "engine did not exit in time; its process tree was ended");
+    if (exited) return this.write("engine stopped");  // it stopped what it started itself (see the engine's supervisor)
+    // It would not exit: end it, and its whole tree with it (a ComfyUI it started included), unless the other app holds
+    // the GPU lock. Then that ComfyUI may be running the holder's job, so only the engine itself is ended.
+    const holder = gpuLockHolder();
+    const other = holder !== null && holder.pid !== child.pid;
+    if (child.pid) await new Promise((r) => execFile("taskkill", [...(other ? [] : ["/T"]), "/F", "/PID", String(child.pid)], () => r(null)));
+    this.write(other ? `engine did not exit in time; it was ended, its children left to ${holder?.owner}, which holds the GPU`
+                     : "engine did not exit in time; its process tree was ended");
   }
 
   write(line: string) {

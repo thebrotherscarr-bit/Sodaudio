@@ -158,7 +158,9 @@ class JobStore:
 class Queue:
     def __init__(self, services, path: Path, handlers: dict, gpu_owner: str = "Sodaudio"):
         self.services = services
-        self.gpu_lock = GpuLock(gpu_owner)  # shared with SodaPixel: held for the whole of every GPU job
+        self.gpu_lock = GpuLock(gpu_owner)  # shared with SodaPixel: held for the whole of a GPU run
+        self.gpu_run = False  # the lock is held: a run of GPU jobs is under way
+        self._gpu_mutex = threading.Lock()
         self.store = JobStore(path)
         self.log_dir = Path(path).parent / "logs" / "jobs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -226,7 +228,7 @@ class Queue:
         return bool(self.running)
 
     def idle(self) -> bool:
-        return not self.running and not self.store.list("queued,running", 1)
+        return not self.running and not self.gpu_run and not self.store.list("queued,running", 1)
 
     def wait_idle(self, timeout=None) -> bool:
         deadline = None if timeout is None else time.time() + timeout
@@ -239,20 +241,44 @@ class Queue:
     # --- workers -------------------------------------------------------------------------------------------------
     def _worker(self, gpu: bool):
         while True:
+            job = None
             with self.cond:
-                job = None
                 while not self.stopping:
                     if not self.paused:
                         job = self.store.next_queued(gpu)
                         if job and self.store.claim(job["id"]):
                             break
                         job = None
+                    if gpu and self.gpu_run:
+                        break  # no GPU job to start next: the run ends, outside the condition (it can take a while)
                     self.cond.wait(1.0)
-                if self.stopping:
-                    return
+            if job is None:
+                if gpu and self.gpu_run:
+                    self.end_gpu_run()
+                    continue
+                return  # stopping
             self._run(job)
             if gpu and self.services.settings["gpu_mode"] == "restricted":
                 time.sleep(float(self.services.settings["rest_seconds"] or 0))
+
+    def end_gpu_run(self):
+        """A GPU run is the GPU jobs this queue runs back to back, all under one hold of the GPU lock. It ends when no
+        GPU job is left to start (none queued, the queue paused or stopping). A ComfyUI this engine started is stopped
+        first, while the lock is still held, so the next holder (here or in the other app) never inherits it; an
+        attached ComfyUI is left alone. Then the lock is released."""
+        with self._gpu_mutex:
+            if not self.gpu_run:
+                return
+            try:
+                self.services.supervisor.end_run(self.services.log)
+            except Exception as error:  # the lock is still released: a failed stop must not hold the GPU forever
+                self.services.log(f"could not stop ComfyUI at the end of the GPU run: {error}")
+            finally:
+                self.gpu_run = False
+                self.gpu_lock.release()
+        self.services.health_changed()
+        if self.idle():
+            self.services.emit({"type": "queue", "idle": True})
 
     def _run(self, job):
         ctx = JobContext(self, job)
@@ -263,8 +289,11 @@ class Queue:
         state, result, error = "done", None, None
         try:
             if self.handlers[job["type"]][1]:
-                with self.gpu_lock.held(f"{job['type']} #{job['id']}", lambda: ctx.cancelled, ctx.log):
-                    result = handler(ctx, job["body"])
+                if not self.gpu_run:  # the first GPU job of a run takes the lock; the run's end releases it
+                    self.gpu_lock.acquire(f"{job['type']} #{job['id']}", lambda: ctx.cancelled, ctx.log)
+                    self.gpu_run = True
+                    self.services.health_changed()  # the lock is ours now: the status bar shows who has the GPU
+                result = handler(ctx, job["body"])
             else:
                 result = handler(ctx, job["body"])
             if ctx.cancelled:

@@ -168,7 +168,7 @@ def test_lock_released_when_the_job_raises_or_is_cancelled(services):
     wait_for(lambda: lock_file.exists())
     services.queue.cancel(job)
     wait_for(lambda: services.queue.store.get(job)["state"] == "cancelled", 20)
-    assert not lock_file.exists()
+    wait_for(lambda: not lock_file.exists(), 20)  # the run ends once nothing is left to start
 
 
 def test_busy_clear_mutex_backs_off_and_is_cancellable(tmp_path):
@@ -189,5 +189,112 @@ def test_holder_ignores_a_lock_left_by_a_dead_pid(tmp_path):
     (tmp_path / "gpu.lock").write_text(json.dumps({"owner": "Sodaudio", "pid": dead.pid, "what": "x", "since": 0}))
     lock = GpuLock("SodaPixel", tmp_path)
     assert lock.holder() is None  # not reported as running
-    (tmp_path / "gpu.lock").write_text(json.dumps({"owner": "Sodaudio", "pid": os.getpid(), "what": "x", "since": 0}))
+    (tmp_path / "gpu.lock").write_text(json.dumps({"owner": "Sodaudio", "pid": os.getpid(), "what": "x", "since": time.time()}))
     assert lock.holder()["owner"] == "Sodaudio"  # a live pid still is
+
+
+# --- staleness across reboots and pid reuse ----------------------------------------------------------------------------
+def test_a_lock_from_a_reused_pid_is_stale(tmp_path):
+    """The pid is alive, but it now names a later process than the one that wrote the lock."""
+    from engine import gpu_lock
+    started = gpu_lock.process_started(os.getpid())
+    assert started is not None and started <= time.time()
+    (tmp_path / "gpu.lock").write_text(json.dumps({"owner": "Other", "pid": os.getpid(), "pid_started": started - 3600,
+                                                   "what": "x", "since": time.time()}))
+    lock = GpuLock("Mine", tmp_path)
+    assert lock.holder() is None
+    lock.acquire("x", lambda: False, lambda m: None, poll=0.05)
+    assert lock.holder()["owner"] == "Mine"
+    lock.release()
+
+
+def test_a_lock_written_before_the_last_boot_is_stale(tmp_path):
+    """A lock left by a crash or power loss, in the format without pid_started: its pid may be any process now."""
+    from engine import gpu_lock
+    boot = gpu_lock.boot_time()
+    assert boot is not None and boot < time.time()
+    (tmp_path / "gpu.lock").write_text(json.dumps({"owner": "Other", "pid": os.getpid(), "what": "x", "since": boot - 3600}))
+    lock = GpuLock("Mine", tmp_path)
+    assert lock.holder() is None
+    lock.acquire("x", lambda: False, lambda m: None, poll=0.05)
+    assert lock.holder()["owner"] == "Mine"
+    lock.release()
+
+
+def test_a_lock_from_this_boot_and_process_is_live(tmp_path):
+    from engine import gpu_lock
+    a = GpuLock("A", tmp_path)
+    a.acquire("x", lambda: False, lambda m: None)
+    written = json.loads((tmp_path / "gpu.lock").read_text())
+    assert written["pid_started"] == pytest.approx(gpu_lock.process_started(os.getpid()))
+    assert GpuLock("B", tmp_path).holder()["owner"] == "A" and a.held_by_me() and not GpuLock("B", tmp_path).held_by_me()
+    a.release()
+    (tmp_path / "gpu.lock").write_text(json.dumps({"owner": "Other", "pid": os.getpid(), "what": "x", "since": time.time()}))
+    assert GpuLock("B", tmp_path).holder()["owner"] == "Other"  # the older format, written this boot: still live
+
+
+# --- ComfyUI across the lock hand-off ----------------------------------------------------------------------------------
+def dummy_comfy():
+    """Stands in for a ComfyUI this engine started: a process that only waits."""
+    return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+
+
+def test_a_gpu_run_holds_the_lock_and_stops_our_comfy_before_releasing(services):
+    """Back-to-back GPU jobs share one hold of the lock; when none is left, the ComfyUI this engine started is stopped
+    while the lock is still held, and only then is the lock released."""
+    own = services.queue.gpu_lock.owner
+    seen, at_stop = [], []
+    services.supervisor.process = dummy_comfy()
+    real_stop = services.supervisor.stop
+
+    def stop():
+        at_stop.append(GpuLock("probe").holder())
+        real_stop()
+    services.supervisor.stop = stop
+
+    def gpu_job(ctx, body):
+        seen.append(GpuLock("probe").holder())
+        return {}
+
+    services.queue.pause()
+    services.handlers["gpu"] = (gpu_job, True)
+    services.queue.submit("gpu", {})
+    services.queue.submit("gpu", {})
+    services.queue.resume()
+    wait_idle(services)
+    assert len(seen) == 2 and seen[0]["owner"] == own and seen[0]["since"] == seen[1]["since"]  # one hold for the run
+    assert len(at_stop) == 1 and at_stop[0]["owner"] == own  # stopped before the lock went
+    assert services.supervisor.process is None and not services.supervisor.ours
+    assert not GpuLock("probe").path.exists()
+
+
+def test_an_attached_comfy_is_never_stopped(services):
+    stops = []
+    services.supervisor.stop = lambda: stops.append(1)
+    services.handlers["gpu"] = (lambda ctx, body: {}, True)
+    services.queue.submit("gpu", {})
+    wait_idle(services)
+    assert stops == [] and not GpuLock("probe").path.exists()
+
+
+def test_quitting_leaves_our_comfy_to_the_app_holding_the_gpu(services):
+    other = GpuLock("Other")  # the other app holds the lock (same pid here, another owner)
+    other.acquire("its run", lambda: False, lambda m: None)
+    process = dummy_comfy()
+    services.supervisor.process = process
+    try:
+        services.supervisor.shutdown()
+        assert process.poll() is None  # still running for the holder
+        assert services.supervisor.process is None  # handed over: no longer ours to restart or stop
+    finally:
+        other.release()
+        process.kill()
+        process.wait(10)
+
+
+def test_quitting_stops_our_comfy_when_no_one_else_holds_the_gpu(services):
+    process = dummy_comfy()
+    services.supervisor.process = process
+    services.supervisor.shutdown()
+    process.wait(20)
+    assert process.poll() is not None
