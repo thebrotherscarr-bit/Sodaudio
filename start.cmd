@@ -7,6 +7,8 @@ rem   start.cmd --no-update  skip the update check
 rem A git checkout updates itself on start: it pulls the latest Sodaudio (fast-forward only, so your own changes
 rem are never overwritten) and installs any new engine packages.
 setlocal
+rem The full path is read before the cd below: a relative path like "tools\..\start.cmd" would not resolve after it.
+set "SELF=%~f0"
 cd /d "%~dp0"
 set "PORT=8770"
 if not "%SODAUDIO_PORT%"=="" set "PORT=%SODAUDIO_PORT%"
@@ -36,8 +38,9 @@ for /f %%h in ('git rev-parse HEAD 2^>nul') do set "SODAUDIO_BEFORE=%%h"
 (
     git pull --ff-only -q >nul 2>nul
     if errorlevel 1 echo Could not update automatically ^(local changes, or no connection^); starting the version you have.
-    call "%~f0" --no-update --updated %*
-    exit /b
+    call "%SELF%" --no-update --updated %*
+    if errorlevel 1 exit /b 1
+    exit /b 0
 )
 
 :updated
