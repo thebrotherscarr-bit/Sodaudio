@@ -55,9 +55,9 @@ python ComfyUI/main.py --listen 127.0.0.1 --port 8188 --disable-dynamic-vram --d
 - **16 GB cards:** ACE-Step's language model and text encoder do not fit beside the diffusion model; `--disable-dynamic-vram` lets ComfyUI evict the text encoder while sampling.
 - **Unloading:** before the MOSS worker loads, the engine calls ComfyUI `POST /free` with `{"unload_models": true, "free_memory": true}`; after MOSS exits its memory is freed with it.
 
-## Claude API
+## Agent API keys
 
-The agent needs a Claude API key (or the Claude Code login the Agent SDK can use). The key is stored in Windows Credential Manager (Python `keyring`; Electron `safeStorage`), never in the settings file or the project. Without a key, everything except the agent panel works.
+The agent needs an Anthropic API key (or a local login the Agent SDK can use), or an OpenAI-compatible provider's address and model, with a key if the provider wants one. Keys are stored in Windows Credential Manager (Python `keyring`; Electron `safeStorage`), never in the settings file or the project. Without a key, everything except the agent panel works.
 
 ## Adopting an existing Rimtera install
 

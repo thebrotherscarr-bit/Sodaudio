@@ -84,7 +84,7 @@ Job types:
 | GET | `/agent/tools` | The tools with their input schemas. |
 | GET | `/agent/mcp` | The MCP server's command line and config snippets for common agent CLIs. |
 
-Settings for the panel's agent: `agent_provider` (`claude` or `openai`), `agent_model`, `agent_base_url`; `PUT /settings` takes `api_key` (Claude) and `agent_key` (OpenAI-compatible), which go to the credential store.
+Settings for the panel's agent: `agent_provider` (`anthropic` or `openai`), `agent_model`, `agent_base_url`; `PUT /settings` takes `api_key` (Anthropic) and `agent_key` (OpenAI-compatible), which go to the credential store.
 
 ### Setup additions
 

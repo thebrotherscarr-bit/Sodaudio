@@ -68,4 +68,4 @@ BUILD-CORE.md (about 5–6 weeks) plus about 2 weeks here. A usable first versio
 
 ## Alternative: the agent in Node
 
-If you ever want the agent in Electron's main process instead of the engine, the Agent SDK has a TypeScript package (`@anthropic-ai/claude-agent-sdk`) with the same ideas (custom tools through an in-process MCP server, a `canUseTool` callback). The tools would then call the engine's HTTP API. Keeping it in the engine (AGENT.md) is simpler, because both builds share it.
+If you ever want the agent in Electron's main process instead of the engine, the Agent SDK also comes as a TypeScript package with the same ideas (custom tools through an in-process MCP server, a `canUseTool` callback). The tools would then call the engine's HTTP API. Keeping it in the engine (AGENT.md) is simpler, because both builds share it.

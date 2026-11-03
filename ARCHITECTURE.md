@@ -16,7 +16,7 @@
 └──┬──────────────┬──────────────┬──────┘
    │ HTTP + WS    │ subprocess   │ HTTPS
 ┌──▼──────────┐ ┌─▼───────────┐ ┌▼────────────┐
-│ ComfyUI     │ │ MOSS worker │ │ Claude API  │
+│ ComfyUI     │ │ MOSS worker │ │ Agent API   │
 │ :8188       │ │ (moss-venv) │ │ (agent only)│
 │ ACE-Step 1.5│ │ SFX/ambience│ └─────────────┘
 └─────────────┘ └─────────────┘
@@ -24,7 +24,7 @@
 
 ### Engine (shared by both builds)
 
-One Python process, light on dependencies: FastAPI, uvicorn, numpy, scipy, soundfile, pyloudnorm, librosa, and the Claude Agent SDK. It never imports torch. The heavy model code runs in separate processes (ComfyUI and the MOSS worker), so the engine starts in a second and a model crash never takes it down.
+One Python process, light on dependencies: FastAPI, uvicorn, numpy, scipy, soundfile, pyloudnorm, librosa, and Anthropic's Agent SDK (or any OpenAI-compatible API). It never imports torch. The heavy model code runs in separate processes (ComfyUI and the MOSS worker), so the engine starts in a second and a model crash never takes it down.
 
 It owns:
 - **Projects:** opens a project file (PROJECT-FORMAT.md) and its workspace folder.

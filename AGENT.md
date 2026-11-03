@@ -5,15 +5,15 @@ The agent panel lets you direct the audio in plain words: "the frozen biome shou
 ## Any agent
 
 The panel is not tied to one vendor. Setup > Agent picks:
-- **Claude** through the Claude Agent SDK (below), with a Claude API key or the Claude Code login.
+- **Anthropic** through its Agent SDK (below), with an Anthropic API key or a local login the SDK can use.
 - **Any OpenAI-compatible chat API** (`engine/agent_openai.py`): OpenAI, Google Gemini's OpenAI endpoint, Mistral, Groq, OpenRouter, or a local server (Ollama, LM Studio, llama.cpp, vLLM). A plain tool-calling loop over the same tools, rules and approvals; the model must support tool calls. A local model shares the GPU with ACE-Step and MOSS, so the one-focus rule applies to it.
-- **Outside agents over MCP** (`engine/mcp_server.py`): Codex, Gemini CLI, Claude Code, opencode, Cursor or anything else that speaks MCP runs the same tools against the running engine. Their calls appear in the panel under "Outside agents (MCP)", and the approval rules below apply to them exactly as to the panel's own agent: the call waits until you answer in the app. Setup shows the command line and config snippets.
+- **Outside agents over MCP** (`engine/mcp_server.py`): Codex, Gemini CLI, opencode, Cursor or anything else that speaks MCP runs the same tools against the running engine. Their calls appear in the panel under "Outside agents (MCP)", and the approval rules below apply to them exactly as to the panel's own agent: the call waits until you answer in the app. Setup shows the command line and config snippets.
 
 ## Where it runs
 
-In the engine, in both builds, using the Claude Agent SDK for Python (`claude-agent-sdk`). One implementation serves the PWA and Electron alike; the UI only shows its messages and permission requests from the event stream (ENGINE-API.md, "Agent").
+In the engine, in both builds, using Anthropic's Agent SDK for Python (see `engine/requirements.txt`). One implementation serves the PWA and Electron alike; the UI only shows its messages and permission requests from the event stream (ENGINE-API.md, "Agent").
 
-- **Model:** `claude-opus-5-5` by default; `claude-sonnet-5-5` as a cheaper setting. Pick in the settings.
+- **Model:** Anthropic's Opus model by default, its Sonnet model as a cheaper setting, or any model an OpenAI-compatible provider offers. Pick in the settings.
 - **Tools:** an in-process MCP server (`create_sdk_mcp_server`) with the tools below, each a thin wrapper over an engine function. The SDK's built-in tools (shell, file editing, web) are turned off: the agent cannot run commands or edit files except through these tools.
 - **Permissions:** the SDK's `can_use_tool` callback sends each request that needs approval to the UI and waits for your answer.
 - **Sessions:** a conversation per project, kept in the workspace, so you can come back to it.
@@ -64,6 +64,6 @@ The agent cannot listen. It judges audio only from the map data (tempo, bars, lo
 
 ## Cost and limits
 
-- Each message costs Claude API tokens. Tool results are kept short (map data is summarised, not sent whole) to keep turns cheap.
+- Each message costs the provider's API tokens (nothing for a local model). Tool results are kept short (map data is summarised, not sent whole) to keep turns cheap.
 - The settings show the session's token use.
 - Without an API key the panel is hidden; everything else works.

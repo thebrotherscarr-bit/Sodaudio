@@ -149,12 +149,12 @@ export default function Setup() {
       <h2>Agent</h2>
       <div className="card col">
         <div className="row"><label style={{ width: 300 }}>Agent in the panel</label>
-          <select value={s.agent_provider || "claude"} onChange={(e) => save(e.target.value === "claude"
-            ? { agent_provider: "claude", agent_model: "claude-opus-5-5" } : { agent_provider: "openai", agent_model: "", agent_base_url: s.agent_base_url || PROVIDERS[0][1] })}>
-            <option value="claude">Claude (Claude Agent SDK)</option>
+          <select value={s.agent_provider === "openai" ? "openai" : "anthropic"} onChange={(e) => save(e.target.value === "anthropic"
+            ? { agent_provider: "anthropic", agent_model: "claude-opus-5-5" } : { agent_provider: "openai", agent_model: "", agent_base_url: s.agent_base_url || PROVIDERS[0][1] })}>
+            <option value="anthropic">Anthropic (Agent SDK)</option>
             <option value="openai">Any OpenAI-compatible API (OpenAI, Gemini, Mistral, OpenRouter, Ollama, LM Studio …)</option>
           </select></div>
-        {(s.agent_provider || "claude") === "claude" ? <>
+        {s.agent_provider !== "openai" ? <>
           <div className="row"><label style={{ width: 300 }}>Model</label>
             <select value={s.agent_model} onChange={(e) => save({ agent_model: e.target.value })}>
               <option value="claude-opus-5-5">Claude Opus 5.5 (default)</option>

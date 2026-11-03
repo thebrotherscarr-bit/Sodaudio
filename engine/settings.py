@@ -26,7 +26,7 @@ DEFAULTS = {
     "restart_every": 10,           # restart a ComfyUI we started after this many tracks
     "rest_seconds": 20,            # restricted mode: pause between GPU jobs
     "generator": "comfy",          # comfy | fake (tests and demos: no GPU)
-    "agent_provider": "claude",    # claude (Claude Agent SDK) | openai (any OpenAI-compatible chat API)
+    "agent_provider": "anthropic", # anthropic (Anthropic's Agent SDK) | openai (any OpenAI-compatible chat API)
     "agent_model": "claude-opus-5-5",
     "agent_base_url": "",          # openai provider: e.g. https://api.openai.com/v1 or http://127.0.0.1:11434/v1 (Ollama)
     "fs_roots": [],                # folders the folder browser may show; empty: the user's home and project folders

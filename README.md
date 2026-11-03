@@ -26,7 +26,7 @@ Both builds share the same engine (Python) and the same interface (web UI). They
 - **Desktop app:** `electron/dist/Sodaudio Setup <version>.exe` installs it per user (no admin). Installed copies update themselves from this repository's GitHub Releases. To publish one: raise `version` in `electron/package.json`, set `GH_TOKEN` (a token with access to this repository), and run `npm run release` in `electron/`; it builds the installer and uploads it with its update files. Build it with `npm install` and `npm run dist` in `electron/` (it bundles a private Python 3.12 with the engine's packages; ComfyUI and the models are never bundled). `npm start` there runs it from the source checkout.
 - **Trying it without a GPU:** set Setup > Generator to "Fake", or start the engine with `.venv\Scripts\python.exe -m engine.app --fake`.
 - **ComfyUI:** a ComfyUI already running at the address in Setup (Comfy Desktop, or one a game's own tools started) is used as it is and never started, stopped or restarted. Otherwise the engine starts it headless, itself or through a game's start script (Rimtera's `tools/comfy/start_comfy.ps1`), the way the overnight runs did. Setup > "Use the game's own ComfyUI and MOSS" fills all of it in from a game's `tools/` folder. While ComfyUI works for someone else (an art run), audio jobs wait.
-- **Agents:** the panel runs Claude (Claude Agent SDK) or any OpenAI-compatible API (OpenAI, Gemini, Mistral, Groq, OpenRouter, a local Ollama or LM Studio). Any agent that speaks MCP (Codex, Gemini CLI, Claude Code, opencode, Cursor) can drive it too, through `engine/mcp_server.py`; Setup shows the config lines. Installs and big runs always wait for "Allow" in the app, whichever agent asks.
+- **Agents:** the panel runs Anthropic's Agent SDK or any OpenAI-compatible API (OpenAI, Gemini, Mistral, Groq, OpenRouter, a local Ollama or LM Studio). Any agent that speaks MCP (Codex, Gemini CLI, opencode, Cursor) can drive it too, through `engine/mcp_server.py`; Setup shows the config lines. Installs and big runs always wait for "Allow" in the app, whichever agent asks.
 - **Rimtera:** `examples/rimtera/audio-project.json` is Rimtera's project (house sound, choir, chant, the title and final-boss plans). It points at the Rimtera checkout beside this one (`../Rimtera`); installs from it go into Rimtera's `Assets/`.
 - **Tests:** `.venv\Scripts\python.exe -m pytest engine/tests` (no GPU: a fake generator, a stand-in ComfyUI and a stand-in MOSS worker). With the engine running: `node ui/e2e/pwa-check.mjs` and `node ui/e2e/notify-check.mjs` (installed Edge), `node electron/e2e-check.mjs` (Electron).
 
@@ -47,7 +47,7 @@ Read them in this order.
 
 ## Ground rules (carried over from Rimtera)
 
-- Everything runs locally: ComfyUI, the models and the engine all listen on 127.0.0.1 only. The agent is the only part that calls out (the Claude API).
+- Everything runs locally: ComfyUI, the models and the engine all listen on 127.0.0.1 only. The agent is the only part that calls out (its provider's API, unless it is a local model).
 - Your own recordings always win. A file already in the game is never overwritten except a generated take the tool itself installed, and only when you ask.
 - One focus at a time on the GPU. Audio jobs and art jobs never run together; the engine holds a single GPU lock.
 - Long runs are visible and controllable: every job streams its log and progress to the UI, and you can pause, stop or reorder the queue.
