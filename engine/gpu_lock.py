@@ -66,17 +66,23 @@ class GpuLock:
         self.path = self.dir / "gpu.lock"
         self._held = False
 
-    def holder(self) -> dict | None:
-        """The current lock's content ({"owner", "pid", "what", "since"}), or None when free or unreadable."""
+    def _read(self) -> dict | None:
+        """The lock file's content as written, whether or not its holder is still alive; None when absent or unreadable."""
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
         return data if isinstance(data, dict) else None
 
+    def holder(self) -> dict | None:
+        """The live lock's content ({"owner", "pid", "what", "since"}), or None when free, unreadable, or left by a dead pid
+        (that lock is stale and is cleared by the next acquire)."""
+        data = self._read()
+        return data if data is not None and pid_alive(data.get("pid")) else None
+
     def _stale(self) -> bool:
         """The lock file is there but its holder is gone: a dead pid, or garbage that has outlived the grace period."""
-        data = self.holder()
+        data = self._read()
         if data is not None:
             return not pid_alive(data.get("pid"))
         try:
@@ -98,7 +104,7 @@ class GpuLock:
             return False
         try:
             os.close(fd)
-            other = self.holder()
+            other = self._read()
             if self._stale():
                 log(f"clearing a stale GPU lock left by {(other or {}).get('owner', 'an unknown owner')}")
                 with contextlib.suppress(OSError):
@@ -133,7 +139,7 @@ class GpuLock:
             if not self.path.exists() and self._publish(payload):  # no temp file is made while a lock is plainly there
                 self._held = True
                 return
-            other = self.holder()
+            other = self._read()
             if other and other.get("pid") == os.getpid() and other.get("owner") == self.owner:
                 raise RuntimeError("the GPU lock is already held by this process")
             wait = poll
@@ -157,7 +163,7 @@ class GpuLock:
         if not self._held:
             return
         self._held = False
-        mine = self.holder()
+        mine = self._read()
         if mine is None or (mine.get("owner") == self.owner and mine.get("pid") == os.getpid()):
             with contextlib.suppress(OSError):
                 self.path.unlink()

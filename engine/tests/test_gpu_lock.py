@@ -181,3 +181,13 @@ def test_busy_clear_mutex_backs_off_and_is_cancellable(tmp_path):
         GpuLock("A", tmp_path).acquire("x", lambda: time.time() - start > 0.3, lambda m: None, poll=5.0)
     assert time.time() - start < 1.5
     assert sorted(f.name for f in tmp_path.iterdir()) == ["gpu.lock", "gpu.lock.clear"]
+
+
+def test_holder_ignores_a_lock_left_by_a_dead_pid(tmp_path):
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    (tmp_path / "gpu.lock").write_text(json.dumps({"owner": "Sodaudio", "pid": dead.pid, "what": "x", "since": 0}))
+    lock = GpuLock("SodaPixel", tmp_path)
+    assert lock.holder() is None  # not reported as running
+    (tmp_path / "gpu.lock").write_text(json.dumps({"owner": "Sodaudio", "pid": os.getpid(), "what": "x", "since": 0}))
+    assert lock.holder()["owner"] == "Sodaudio"  # a live pid still is
