@@ -1,0 +1,123 @@
+{
+  "format": 1,
+  "name": "Rimtera",
+  "root": "../../../Rimtera",
+  "workspace": "audio-work",
+  "output": {
+    "sfx": {
+      "folder": "Assets/Sounds",
+      "format": "wav",
+      "naming": "{cue}{_n}"
+    },
+    "music": {
+      "folder": "Assets/Music",
+      "format": "ogg",
+      "naming": "{cue}{_n}"
+    },
+    "ambience": {
+      "folder": "Assets/Ambience",
+      "format": "ogg",
+      "naming": "{cue}{_n}"
+    }
+  },
+  "levels": {
+    "lufs": -16,
+    "peak_dbfs": -1
+  },
+  "style": {
+    "house_sound": "Rimtera sound: driving techno pulse and drum and bass breakbeats under funky classical strings and baroque runs, MIDI synth-pop leads, upbeat, classical with a semi-modern edge",
+    "choir": "epic post-apocalyptic, very deep basso profundo male monk choir, slow sustained low chanting with long held vowels, Gregorian-style, invented words only",
+    "music_suffix": "in a MIDI style: General MIDI sound-module instruments (synth leads, sampled strings, brass, a drum kit), 16-bit era like a classic sandbox game soundtrack, loopable",
+    "sfx_suffix": "sci-fi frontier retro video game sound effect, MIDI and sound-module era, punchy and crunchy, synthetic with a slight bit-crushed edge, clean, close, no music, no speech",
+    "ambience_suffix": "seamless ambient background loop, field recording style, no music, no speech"
+  },
+  "templates": {
+    "music": "{card}. {house_sound}. {choir}. {voice}, with a low droning hum underneath. video game {context} {music_suffix}",
+    "sfx": "{card}. {sfx_suffix}",
+    "ambience": "{card}. {ambience_suffix}"
+  },
+  "chant": {
+    "lines": [
+      "Riiim... teee... raaa...",
+      "Riiim-terr-raaa...",
+      "Riiim-ta-raaa...",
+      "Raaa... te... riiim...",
+      "Ohhh... riiim-te-raaa...",
+      "Mmmmm... riiim...",
+      "Riiim-te-raaa... riiim-ta-raaa...",
+      "Mmmmm... ohhh..."
+    ],
+    "shapes": {
+      "calm": [
+        "[Intro - low monk drone alone, slow and wide]",
+        "[Verse - the music enters, monks hum low underneath]",
+        "[Chorus - the choir swells, slow held chant]",
+        "[Interlude - the melody leads, the drone holds]",
+        "[Chorus - the chant returns, fuller]",
+        "[Outro - the drone holds and leads back to the start]"
+      ],
+      "drive": [
+        "[Intro - low monk drone, the beat builds in]",
+        "[Verse - driving groove, the low drone holds underneath]",
+        "[Chorus - full choir, slow half-time chant over the beat]",
+        "[Bridge - leads race, monks drone low]",
+        "[Build - drums rise, the choir grows deeper]",
+        "[Chorus - full band and full choir]"
+      ],
+      "fight": [
+        "[Intro - low monk drone alone, ominous, war drums]",
+        "[Verse - the fight starts, the low drone holds underneath]",
+        "[Chorus - full choir, slow half-time chant over the driving fight]",
+        "[Bridge - strings and synth leads race, monks drone low]",
+        "[Build - drums double, the choir grows deeper]",
+        "[Chorus - overwhelming, full choir and full band]"
+      ]
+    },
+    "shape_rules": [
+      {
+        "match": "mus_boss_*",
+        "shape": "fight"
+      },
+      {
+        "bpm_at_least": 144,
+        "shape": "fight"
+      },
+      {
+        "match": [
+          "*_night",
+          "*_underground"
+        ],
+        "shape": "calm"
+      },
+      {
+        "bpm_at_most": 110,
+        "shape": "calm"
+      },
+      {
+        "shape": "drive"
+      }
+    ],
+    "uppercase_choruses": true
+  },
+  "importer": {
+    "type": "command",
+    "command": "dotnet run -- --sound-cues",
+    "format": "rimtera-tsv",
+    "output": "tools/audio/audio_needs.tsv"
+  },
+  "cues": [
+    {
+      "id": "mus_title",
+      "category": "music",
+      "plan": "[Intro - lone pan flute over harpsichord, slow and wide]\n[Instrumental]\n\n[Verse - deep monks hum, slow and low]\nMmmmm... riiim...\nRiiim... teee... raaa...\n\n[Build - drums and bass enter, the low chant holds]\nRiiim-te-raaa...\nRiiim-ta-raaa...\nOhhh... riiim-te-raaa...\n\n[Theme - full band and pan flute, slow deep chant underneath]\nRiiim... teee... raaa...\nRim-ta-raaa... rim-te-raaa...\nRaaa... te... riiim...\n\n[Interlude - pan flute alone over the beat, monks hum]\nMmmmm... riiim-ta-raaa...\n\n[Build - rising strings, the choir grows deeper]\nRiiim-te-raaa... riiim-te-raaa...\nRiiim-ta-raaa... ohhh...\n\n[Climax - drum and bass, full low choir and soaring strings]\nRIIIM... TEEE... RAAA...\nRIIIM-TA-RAAA... RIIIM-TE-RAAA...\nOhhh... riiim-te-raaa...\n\n[Theme - full band, monks hum under the pan flute]\nMmmmm... rim-te-raaa...\nMmmmm... rim-ta-raaa...",
+      "notes": "Final: the installed loop is a recompose of take 8 (139.04-142.73 at +8.5 dB, 142.73-146.43 at +14 dB, 61.51-91.05).",
+      "locked": true
+    },
+    {
+      "id": "mus_boss_final",
+      "category": "music",
+      "plan": "[Intro - low monk drone alone, ominous, distant war drums]\nMmmmm... ohhh...\nRiiim... teee... raaa...\n\n[Verse - drum and bass breakbeat and orchestral metal, the low drone holds underneath]\nMmmmm... riiim-ta-raaa...\nOhhh... riiim-te-raaa...\n\n[Chorus - full choir, slow half-time chant over the driving fight]\nRIIIM... TEEE... RAAA...\nRIIIM-TA-RAAA... RIIIM-TE-RAAA...\n\n[Bridge - strings and synth leads race, monks drone low]\nMmmmm... ohhh...\nRaaa... te... riiim...\n\n[Build - drums double, the choir grows deeper]\nRiiim-te-raaa... riiim-ta-raaa...\nOhhh... OHHH...\n\n[Chorus - overwhelming, full choir and full band]\nRIIIM... TEEE... RAAA...\nRIIIM-TA-RAAA... RIIIM-TE-RAAA...\nOhhh... riiim-te-raaa...",
+      "notes": ""
+    }
+  ]
+}

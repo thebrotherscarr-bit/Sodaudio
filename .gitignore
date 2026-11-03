@@ -1,0 +1,11 @@
+.venv/
+audio-work/
+ui/node_modules/
+ui/dev-dist/
+electron/node_modules/
+electron/dist/
+electron/build/engine/
+electron/build/python-download/
+electron/out/
+__pycache__/
+.pytest_cache/
