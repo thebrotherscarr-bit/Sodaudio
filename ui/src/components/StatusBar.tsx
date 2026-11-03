@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { Health, post } from "../api";
 import { useEvents } from "../events";
-import { notify, setTaskbarProgress } from "../native";
+import { native, notify, setTaskbarProgress } from "../native";
 import { Eta } from "./common";
 
 export default function StatusBar({ health, connected }: { health: Health | null; connected: boolean }) {
   const [job, setJob] = useState<{ id: number; progress: number; eta_s?: number; message?: string; job_type?: string } | null>(null);
   const started = useRef<Record<number, number>>({});
   const longRun = useRef(false);
+  const [update, setUpdate] = useState<string | null>(null);
+  useEffect(() => {
+    const n = native();
+    n?.updateState?.().then((s) => setUpdate(s.ready));
+    n?.onUpdateReady?.(setUpdate);
+  }, []);
 
   useEvents(["job", "queue"], (e) => {
     if (e.type === "job") {
@@ -51,6 +57,10 @@ export default function StatusBar({ health, connected }: { health: Health | null
         {health?.mode ?? "focused"}
       </button>
       {!connected && <span className="bad">engine disconnected</span>}
+      {update && (
+        <button className="small good" title="The update installs when Sodaudio quits; this restarts now (a running job is finished or stopped first, you choose)"
+          onClick={() => native()?.restartToUpdate?.()}>Restart to update to {update}</button>
+      )}
     </footer>
   );
 }

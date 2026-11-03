@@ -16,6 +16,7 @@ let quitting = false;
 let awakeId: number | null = null;
 let health: any = null;
 let settings: any = {};
+let updateReady: string | null = null; // a downloaded update's version: it installs when the app quits
 
 // --- single instance ----------------------------------------------------------------------------------------------
 if (!app.requestSingleInstanceLock()) {
@@ -100,6 +101,7 @@ function updateTray() {
     { type: "separator" },
     { label: "Open", click: showWindow },
     { label: health?.paused ? "Resume queue" : "Pause queue", click: () => request("POST", health?.paused ? "/api/queue/resume" : "/api/queue/pause", {}).catch(() => {}) },
+    ...(updateReady ? [{ label: `Restart to update to ${updateReady}`, click: () => quit({ restart: true }) }] : []),
     { label: "Quit", click: () => quit() },
   ]));
 }
@@ -146,6 +148,8 @@ ipcMain.handle("start-with-windows", async (_e, enabled: boolean) => {
   app.setLoginItemSettings({ openAtLogin: enabled, args: ["--hidden"] });
   await request("PUT", "/api/settings", { start_with_windows: enabled }).catch(() => {});
 });
+ipcMain.handle("update-state", () => ({ version: app.getVersion(), ready: updateReady }));
+ipcMain.handle("restart-to-update", () => quit({ restart: true }));
 ipcMain.handle("set-api-key", async (_e, key: string) => {
   if (key) fs.writeFileSync(keyFile, safeStorage.encryptString(key));
   else if (fs.existsSync(keyFile)) fs.unlinkSync(keyFile);
@@ -153,8 +157,44 @@ ipcMain.handle("set-api-key", async (_e, key: string) => {
   await engine.restart();
 });
 
+// --- self-updating --------------------------------------------------------------------------------------------------
+// Installed copies check this repository's GitHub Releases at start and every few hours, download a new version in
+// the background, and install it when the app quits (or at once, from the tray or the app's banner). The engine is
+// stopped first, like any quit, so a running job is never cut off without asking. Settings and projects live in
+// %APPDATA%\Sodaudio, outside the install folder, so an update keeps them.
+const UPDATE_EVERY = 4 * 3600 * 1000;
+let updater: any = null;
+
+async function setupUpdates() {
+  if (!app.isPackaged || process.env.SODAUDIO_NO_UPDATES) return;
+  try {
+    updater = (await import("electron-updater")).autoUpdater;
+  } catch (e: any) { engine.write("no auto-update: " + e.message); return; }
+  updater.autoDownload = true;
+  updater.autoInstallOnAppQuit = false; // installed by quit() below, after the engine has stopped
+  updater.logger = { info: (m: any) => engine.write("update: " + m), warn: (m: any) => engine.write("update: " + m),
+                     error: (m: any) => engine.write("update error: " + m), debug: () => {} };
+  updater.on("update-available", (info: any) => engine.write(`update: ${info.version} available; downloading`));
+  updater.on("update-not-available", () => engine.write(`update: ${app.getVersion()} is the latest`));
+  updater.on("error", (e: Error) => engine.write("update check failed: " + e.message));
+  updater.on("update-downloaded", (info: any) => {
+    updateReady = info.version;
+    engine.write(`update: ${info.version} downloaded; installs when Sodaudio quits`);
+    updateTray();
+    win?.webContents.send("update-ready", info.version);
+    if (Notification.isSupported()) {
+      const note = new Notification({ title: `Sodaudio ${info.version} is ready`, body: "It installs when you quit. Click to restart now.", icon: iconPath() });
+      note.on("click", () => quit({ restart: true }));
+      note.show();
+    }
+  });
+  const check = () => { if (!updateReady) updater.checkForUpdates().catch((e: Error) => engine.write("update check failed: " + e.message)); };
+  check();
+  setInterval(check, UPDATE_EVERY);
+}
+
 // --- quitting -----------------------------------------------------------------------------------------------------
-async function quit() {
+async function quit(options: { restart?: boolean } = {}) {
   if (quitting) return;
   let mode: "finish" | "stop" = "finish";
   if (!engine.external && health?.busy) {
@@ -169,6 +209,11 @@ async function quit() {
   win?.hide();
   tray?.destroy();
   await engine.stop(mode);
+  if (updateReady && updater && !process.env.SODAUDIO_TEST_NO_INSTALL) {
+    engine.write(`update: installing ${updateReady}${options.restart ? " and restarting" : ""}`);
+    updater.quitAndInstall(true, !!options.restart); // silent install; relaunch only when asked
+    return;
+  }
   app.exit(0);
 }
 
@@ -194,11 +239,5 @@ app.whenReady().then(async () => {
   if (process.env.AD_TEST_QUIT_AFTER) setTimeout(() => quit(), Number(process.env.AD_TEST_QUIT_AFTER));
   setInterval(poll, 4000);
   poll();
-  if (app.isPackaged) {
-    try {
-      const { autoUpdater } = await import("electron-updater");
-      autoUpdater.on("error", (e) => engine.write("update check failed: " + e.message));
-      await autoUpdater.checkForUpdatesAndNotify();
-    } catch (e: any) { engine.write("no auto-update: " + e.message); }
-  }
+  setupUpdates();
 });

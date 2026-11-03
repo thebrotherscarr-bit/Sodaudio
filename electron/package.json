@@ -1,7 +1,7 @@
 {
   "name": "sodaudio",
   "productName": "Sodaudio",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Direct a game's audio with local AI models.",
   "author": "Soda Poppensky",
   "license": "MIT",

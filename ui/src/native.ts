@@ -10,6 +10,9 @@ export interface Native {
   notify(title: string, body: string, jobId?: number): Promise<void>;
   setProgress(value: number): Promise<void>;
   onOpenJob?(callback: (jobId: number) => void): void;
+  updateState?(): Promise<{ version: string; ready: string | null }>;
+  onUpdateReady?(callback: (version: string) => void): void;
+  restartToUpdate?(): Promise<void>;
 }
 
 declare global {

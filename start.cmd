@@ -1,33 +1,52 @@
 @echo off
-rem Starts Sodaudio engine in its own window and opens the app in the browser.
-rem   start.cmd            start (or, if it is already running, just open the page)
-rem   start.cmd --no-open  start without opening the page (start with Windows)
-rem   start.cmd --tray     also show the tray icon (tray.pyw)
+rem Starts the Sodaudio engine in its own window and opens the app in the browser.
+rem   start.cmd              start (or, if it is already running, just open the page)
+rem   start.cmd --no-open    start without opening the page (start with Windows)
+rem   start.cmd --tray       also show the tray icon (tray.pyw)
+rem   start.cmd --no-update  skip the update check
+rem A git checkout updates itself on start: it pulls the latest Sodaudio (fast-forward only, so your own changes
+rem are never overwritten) and installs any new engine packages.
 setlocal
 cd /d "%~dp0"
 set "PORT=8770"
 if not "%SODAUDIO_PORT%"=="" set "PORT=%SODAUDIO_PORT%"
 set "OPEN=1"
 set "TRAY=0"
+set "UPDATE=1"
 for %%a in (%*) do (
     if /i "%%~a"=="--no-open" set "OPEN=0"
     if /i "%%~a"=="--tray" set "TRAY=1"
+    if /i "%%~a"=="--no-update" set "UPDATE=0"
 )
 set "URL=http://127.0.0.1:%PORT%"
 
 call :up
 if not errorlevel 1 goto running
 
-if exist ".venv\Scripts\python.exe" goto ui
+if "%UPDATE%"=="1" call :update
+
+if exist ".venv\Scripts\python.exe" goto deps
 echo First run: creating the engine's Python 3.12 environment in .venv ...
 where uv >nul 2>nul
-if errorlevel 1 goto pip
-uv venv --python 3.12 .venv || goto nopython
-uv pip install --python .venv\Scripts\python.exe -r engine\requirements.txt || goto nopython
-goto ui
-:pip
-py -3.12 -m venv .venv || goto nopython
-.venv\Scripts\python.exe -m pip install -r engine\requirements.txt || goto nopython
+if errorlevel 1 (
+    py -3.12 -m venv .venv || goto nopython
+) else (
+    uv venv --python 3.12 .venv || goto nopython
+)
+
+:deps
+rem Install the engine's packages when requirements.txt is new or changed since the last install.
+certutil -hashfile engine\requirements.txt SHA256 | findstr /v ":" > "%TEMP%\sodaudio-requirements.sha"
+fc /b "%TEMP%\sodaudio-requirements.sha" ".venv\requirements.sha" >nul 2>nul
+if not errorlevel 1 goto ui
+echo Installing the engine's packages ...
+where uv >nul 2>nul
+if errorlevel 1 (
+    .venv\Scripts\python.exe -m pip install -r engine\requirements.txt || goto nopython
+) else (
+    uv pip install --python .venv\Scripts\python.exe -r engine\requirements.txt || goto nopython
+)
+copy /y "%TEMP%\sodaudio-requirements.sha" ".venv\requirements.sha" >nul
 
 :ui
 if exist "ui\dist\index.html" goto start
@@ -58,6 +77,20 @@ exit /b 0
 echo Could not set up Python 3.12 for the engine. Install Python 3.12 (python.org) or uv, then run start.cmd again.
 pause
 exit /b 1
+
+:update
+rem Only in a git checkout with git installed; a zip copy is left as it is.
+if not exist ".git" exit /b 0
+where git >nul 2>nul || exit /b 0
+for /f %%h in ('git rev-parse HEAD 2^>nul') do set "BEFORE=%%h"
+git pull --ff-only -q >nul 2>nul
+if errorlevel 1 (
+    echo Could not update automatically ^(local changes, or no connection^); starting the version you have.
+    exit /b 0
+)
+for /f %%h in ('git rev-parse HEAD 2^>nul') do set "AFTER=%%h"
+if not "%BEFORE%"=="%AFTER%" echo Updated Sodaudio to the latest version.
+exit /b 0
 
 :up
 curl.exe -s -o nul -m 2 "%URL%/api/health"

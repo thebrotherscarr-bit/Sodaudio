@@ -12,4 +12,7 @@ contextBridge.exposeInMainWorld("native", {
   setStartWithWindows: (enabled: boolean) => ipcRenderer.invoke("start-with-windows", enabled),
   setApiKey: (key: string) => ipcRenderer.invoke("set-api-key", key),
   onOpenJob: (callback: (jobId: number) => void) => ipcRenderer.on("open-job", (_e, id) => callback(id)),
+  updateState: () => ipcRenderer.invoke("update-state"),
+  onUpdateReady: (callback: (version: string) => void) => ipcRenderer.on("update-ready", (_e, version) => callback(version)),
+  restartToUpdate: () => ipcRenderer.invoke("restart-to-update"),
 });
