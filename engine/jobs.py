@@ -8,6 +8,8 @@ import time
 import traceback
 from pathlib import Path
 
+from .gpu_lock import GpuLock
+
 STATES = ("queued", "running", "done", "failed", "cancelled")
 CPU_WORKERS = 2
 
@@ -154,8 +156,9 @@ class JobStore:
 
 
 class Queue:
-    def __init__(self, services, path: Path, handlers: dict):
+    def __init__(self, services, path: Path, handlers: dict, gpu_owner: str = "Sodaudio"):
         self.services = services
+        self.gpu_lock = GpuLock(gpu_owner)  # shared with SodaPixel: held for the whole of every GPU job
         self.store = JobStore(path)
         self.log_dir = Path(path).parent / "logs" / "jobs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -259,7 +262,11 @@ class Queue:
         handler = self.handlers[job["type"]][0]
         state, result, error = "done", None, None
         try:
-            result = handler(ctx, job["body"])
+            if self.handlers[job["type"]][1]:
+                with self.gpu_lock.held(f"{job['type']} #{job['id']}", lambda: ctx.cancelled, ctx.log):
+                    result = handler(ctx, job["body"])
+            else:
+                result = handler(ctx, job["body"])
             if ctx.cancelled:
                 state = "cancelled"
         except Cancelled:

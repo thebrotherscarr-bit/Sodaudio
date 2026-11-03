@@ -21,6 +21,7 @@ def app_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     monkeypatch.setenv("SODAUDIO_HOME", str(home))
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("SODA_LOCK_DIR", str(tmp_path / "soda-lock"))  # the shared GPU lock never touches %LOCALAPPDATA%\Soda
     return home
 
 
