@@ -102,3 +102,17 @@ def test_upload_to_inbox(client, services, tmp_path):
         result = client.post("/api/upload", files={"file": ("drop.wav", handle, "audio/wav")}).json()
     assert result["file"] == "inbox/drop.wav"
     assert client.get("/api/maps", params={"file": result["file"]}).status_code == 202
+
+
+def test_shutdown_stops_the_running_job_and_cancels_the_queued(client, services):
+    class Server:
+        should_exit = False
+
+    server = client.app.state.holder["server"] = Server()  # without one, shutdown would end this test process
+    services.settings.data.update(fake_delay=5)
+    ids = [services.queue.submit("generate", {"cues": ["mus_frozen_day"], "takes": 4}) for _ in range(3)]
+    from .conftest import wait_for
+    wait_for(lambda: services.queue.running, 10)
+    assert client.post("/api/shutdown", json={}).json()["ok"] is True
+    wait_for(lambda: server.should_exit, 40)
+    assert {services.queue.store.get(i)["state"] for i in ids} == {"cancelled"}

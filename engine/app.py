@@ -594,16 +594,23 @@ def create_app(services: Services | None = None, port=8770, open_last=True) -> F
 
     @api.post("/shutdown")
     def shutdown(body: dict = Body(default={})):
-        """Finish the current job (mode finish) or interrupt it (mode stop), then exit."""
-        mode_ = body.get("mode", "finish")
+        """Stop the running job and cancel the queued ones (mode stop, the default: quitting), or let the running job
+        finish and keep the queue (mode finish: an engine restart), then exit; the ComfyUI this engine started is stopped on the way out (services.shutdown). Nothing
+        is left to start again by itself on the next start."""
+        mode_ = body.get("mode", "stop")
         q = queue()
         q.pause()
         if mode_ == "stop":
+            for job in q.store.list("queued"):
+                q.cancel(job["id"])
             for job_id in list(q.running):
                 q.cancel(job_id)
 
         def finish():
-            q.wait_idle(timeout=None if mode_ == "finish" else 30)
+            if not q.wait_idle(timeout=None if mode_ == "finish" else 30):
+                services.log("a job did not stop in 30 s; it is ended with the engine")
+            for job in q.store.list("running"):  # ended with the engine: cancelled, not resumed on the next start
+                q.store.update(job["id"], state="cancelled", finished=time.time())
             services.log("engine shutting down")
             server = state.get("server")
             if server:

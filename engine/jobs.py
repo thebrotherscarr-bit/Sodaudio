@@ -282,6 +282,8 @@ class Queue:
 
     def _run(self, job):
         ctx = JobContext(self, job)
+        if self.handlers[job["type"]][1]:
+            ctx.on_cancel(self.services.supervisor.abort_start)  # a cancel also ends a wait for ComfyUI to start
         self.running[job["id"]] = ctx
         self.services.emit({"type": "job", "id": job["id"], "state": "running", "progress": 0, "job_type": job["type"]})
         self.services.health_changed()

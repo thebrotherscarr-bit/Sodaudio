@@ -1,2 +1,2 @@
 """Sodaudio engine: projects, the job queue, generation, analysis and the agent, behind one HTTP API."""
-VERSION = "0.1.2"
+VERSION = "0.1.3"

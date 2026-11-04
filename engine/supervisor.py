@@ -6,8 +6,10 @@ workaround). Three ways to have ComfyUI:
 - headless, started by a script (settings.comfy_start_script), such as Rimtera's tools/comfy/start_comfy.ps1, called
   with -ReserveVramGB and -Priority for the GPU mode, the way Rimtera's overnight runs started it."""
 import os
+import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -38,6 +40,7 @@ class Supervisor:
         self.tracks = 0
         self.stats = None
         self._stop = threading.Event()
+        self._abort = threading.Event()  # a cancelled job stops waiting for a ComfyUI that is starting
         self._lock = threading.Lock()
 
     @property
@@ -120,15 +123,30 @@ class Supervisor:
         log(f"starting ComfyUI with {' '.join(args)}")
         self.state = "starting"
         self.services.health_changed()
-        result = subprocess.run(args, capture_output=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        for line in (result.stdout + result.stderr).decode("utf-8", "replace").splitlines():
+        # The script's output goes to a file, not a pipe: the ComfyUI it launches inherits the script's output handles,
+        # and reading a pipe to its end would wait for ComfyUI itself to exit.
+        with tempfile.TemporaryFile() as output:
+            script = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            try:
+                script.wait(120)
+            except subprocess.TimeoutExpired:
+                log("the start script did not return in 120 s; waiting for ComfyUI to answer anyway")
+            output.seek(0)
+            text = output.read().decode("utf-8", "replace")
+        for line in text.splitlines():
             if line.strip():
                 self.services.log(line, source="comfy")
+        # The ComfyUI it launched is ours from now on, so a quit or cancel while it is still loading stops it too.
+        # Rimtera's script says "pid N"; otherwise it is found by its port once it answers.
+        found = re.search(r"\bpid (\d+)", text)
+        self.script_pid = int(found.group(1)) if found else None
         deadline = time.time() + wait
         while time.time() < deadline:
+            self._check_abort()
             if self.probe():
                 self.state = "up"
-                self.script_pid = pid_on_port(self.port())
+                self.script_pid = pid_on_port(self.port()) or self.script_pid
                 self.tracks = 0
                 self.services.health_changed()
                 return
@@ -136,7 +154,18 @@ class Supervisor:
         self.state = "down"
         raise RuntimeError("ComfyUI did not answer after its start script; see the script's own log")
 
+    def abort_start(self):
+        """Stop waiting for a ComfyUI that is starting (the job that wanted it was cancelled)."""
+        self._abort.set()
+
+    def _check_abort(self):
+        if self._abort.is_set() or self._stop.is_set():
+            self.state = "down"
+            self.services.health_changed()
+            raise InterruptedError("cancelled while ComfyUI was starting")
+
     def start(self, log=None, wait=360):
+        self._abort.clear()
         with self._lock:
             if self.probe():
                 self.state = "up"
@@ -159,6 +188,7 @@ class Supervisor:
             self.tracks = 0
             deadline = time.time() + wait
             while time.time() < deadline:
+                self._check_abort()
                 if self.process.poll() is not None:
                     self.state = "down"
                     self.services.health_changed()

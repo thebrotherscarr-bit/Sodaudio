@@ -196,19 +196,20 @@ async function setupUpdates() {
 // --- quitting -----------------------------------------------------------------------------------------------------
 async function quit(options: { restart?: boolean } = {}) {
   if (quitting) return;
-  let mode: "finish" | "stop" = "finish";
-  if (!engine.external && health?.busy) {
+  // Quitting stops everything Sodaudio started: the running job, the queued ones and its ComfyUI. Nothing starts again
+  // by itself on the next start.
+  if (!engine.external && (health?.busy || health?.queued)) {
+    const running = health.running ? `Job #${health.running.id} (${health.running.type}) is running` : "Jobs are waiting";
     const answer = dialog.showMessageBoxSync({
-      type: "question", buttons: ["Finish the current job, then quit", "Stop it now and quit", "Cancel"], defaultId: 0, cancelId: 2,
-      title: "A job is running", message: `Job #${health.running?.id} (${health.running?.type}) is running.`,
+      type: "question", buttons: ["Stop the jobs and quit", "Cancel"], defaultId: 0, cancelId: 1,
+      title: "Jobs are not finished", message: `${running}${health.queued ? `, ${health.queued} queued` : ""}. Quitting stops them.`,
     });
-    if (answer === 2) return;
-    mode = answer === 0 ? "finish" : "stop";
+    if (answer === 1) return;
   }
   quitting = true;
   win?.hide();
   tray?.destroy();
-  await engine.stop(mode);
+  await engine.stop("stop");
   if (updateReady && updater && !process.env.SODAUDIO_TEST_NO_INSTALL) {
     engine.write(`update: installing ${updateReady}${options.restart ? " and restarting" : ""}`);
     updater.quitAndInstall(true, !!options.restart); // silent install; relaunch only when asked

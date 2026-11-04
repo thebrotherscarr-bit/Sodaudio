@@ -43,7 +43,7 @@ def toggle_pause(icon, item):
 
 def quit_engine(icon, item):
     try:
-        call("/shutdown", {"mode": "finish"})
+        call("/shutdown", {"mode": "stop"})
     except OSError:
         pass
     icon.stop()
